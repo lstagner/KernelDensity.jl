@@ -23,8 +23,13 @@ function default_bandwidth(data::(@compat Tuple{RealVector,RealVector}))
     default_bandwidth(data[1]), default_bandwidth(data[2])
 end
 
+function default_weights(data::(@compat Tuple{RealVector,RealVector}))
+    n = length(data[1])
+    WeightVec(fill(1/n,n))
+end
+
 # tabulate data for kde
-function tabulate(data::(@compat Tuple{RealVector, RealVector}), midpoints::(@compat Tuple{Range, Range}))
+function tabulate(data::(@compat Tuple{RealVector, RealVector}), midpoints::(@compat Tuple{Range, Range}), weights::WeightVec)
     xdata, ydata = data
     ndata = length(xdata)
     length(ydata) == ndata || error("data vectors must be of same length")
@@ -35,17 +40,17 @@ function tabulate(data::(@compat Tuple{RealVector, RealVector}), midpoints::(@co
 
     # Set up a grid for discretized data
     grid = zeros(Float64, nx, ny)
-    ainc = 1.0 / (ndata*(sx*sy)^2)
+    ainc = 1.0 / (weights.sum*(sx*sy)^2)
 
     # weighted discretization (cf. Jones and Lotwick)
-    for (x, y) in zip(xdata,ydata)
+    for (x, y, w) in zip(xdata,ydata,weights.values)
         kx, ky = searchsortedfirst(xmid,x), searchsortedfirst(ymid,y)
         jx, jy = kx-1, ky-1
         if 1 <= jx <= nx-1 && 1 <= jy <= ny-1
-            grid[jx,jy] += (xmid[kx]-x)*(ymid[ky]-y)*ainc
-            grid[kx,jy] += (x-xmid[jx])*(ymid[ky]-y)*ainc
-            grid[jx,ky] += (xmid[kx]-x)*(y-ymid[jy])*ainc
-            grid[kx,ky] += (x-xmid[jx])*(y-ymid[jy])*ainc
+            grid[jx,jy] += (xmid[kx]-x)*(ymid[ky]-y)*ainc*w
+            grid[kx,jy] += (x-xmid[jx])*(ymid[ky]-y)*ainc*w
+            grid[jx,ky] += (xmid[kx]-x)*(y-ymid[jy])*ainc*w
+            grid[kx,ky] += (x-xmid[jx])*(y-ymid[jy])*ainc*w
         end
     end
 
@@ -81,32 +86,33 @@ end
 
 typealias BivariateDistribution @compat(Union{MultivariateDistribution,Tuple{UnivariateDistribution,UnivariateDistribution}})
 
-function kde(data::(@compat Tuple{RealVector, RealVector}), midpoints::(@compat Tuple{Range, Range}), dist::BivariateDistribution)
-    k = tabulate(data,midpoints)
+function kde(data::(@compat Tuple{RealVector, RealVector}), midpoints::(@compat Tuple{Range, Range}), weights::WeightVec, dist::BivariateDistribution)
+    k = tabulate(data,midpoints,weights)
     conv(k,dist)
 end
 
 function kde(data::(@compat Tuple{RealVector, RealVector}), dist::BivariateDistribution;
              boundary::(@compat Tuple{(@compat Tuple{Real,Real}),(@compat Tuple{Real,Real})}) = (kde_boundary(data[1],std(dist[1])),
                                                      kde_boundary(data[2],std(dist[2]))),
-             npoints::(@compat Tuple{Int,Int})=(256,256))
+             npoints::(@compat Tuple{Int,Int})=(256,256), weights::WeightVec = default_weights(data))
 
     xmid = kde_range(boundary[1],npoints[1])
     ymid = kde_range(boundary[2],npoints[2])
 
-    kde(data,(xmid,ymid),dist)
+    kde(data,(xmid,ymid),weights,dist)
 end
 
 function kde(data::(@compat Tuple{RealVector, RealVector}), midpoints::(@compat Tuple{Range, Range});
-             bandwidth=default_bandwidth(data), kernel=Normal)
+             bandwidth=default_bandwidth(data), kernel=Normal, weights=default_weights(data))
 
     dist = kernel_dist(kernel,bandwidth)
-    kde(data,midpoints,dist)
+    kde(data,midpoints,weights,dist)
 end
 
 function kde(data::(@compat Tuple{RealVector, RealVector});
              bandwidth=default_bandwidth(data),
              kernel=Normal,
+             weights=default_weights(data),
              boundary::(@compat Tuple{(@compat Tuple{Real,Real}),(@compat Tuple{Real,Real})}) = (kde_boundary(data[1],bandwidth[1]),
                                                      kde_boundary(data[2],bandwidth[2])),
              npoints::(@compat Tuple{Int,Int})=(256,256))
@@ -115,7 +121,7 @@ function kde(data::(@compat Tuple{RealVector, RealVector});
     xmid = kde_range(boundary[1],npoints[1])
     ymid = kde_range(boundary[2],npoints[2])
 
-    kde(data,(xmid,ymid),dist)
+    kde(data,(xmid,ymid),weights,dist)
 end
 
 # matrix data

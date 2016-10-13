@@ -9,7 +9,7 @@ using Interpolations
 using Compat
 
 import Base: conv
-import StatsBase: RealVector, RealMatrix
+import StatsBase: RealVector, RealMatrix, WeightVec
 import Distributions: twoπ, pdf
 
 export kde, kde_lscv, UnivariateKDE, BivariateKDE, InterpKDE, pdf
